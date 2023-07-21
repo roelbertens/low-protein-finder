@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Iterable, Union
 from scrapy import Request, Spider
 from scrapy.responsetypes import Response
 
-from scrapers.items import Product
+from scrapers.items import Product, NutritionData, Measure
 
 QUERY = "query SearchProducts($input: ProductSearchInput!) {\n  searchProducts(input: $input) {\n    redirectUrl\n    removeAllAction {\n      friendlyUrl\n      __typename\n    }\n    pageHeader {\n      headerText\n      count\n      __typename\n    }\n    start\n    count\n    sortOptions {\n      text\n      friendlyUrl\n      selected\n      __typename\n    }\n    categoryTiles {\n      count\n      catId\n      name\n      friendlyUrl\n      imageLink\n      displayOrder\n      __typename\n    }\n    facets {\n      key\n      displayName\n      multiSelect\n      values {\n        ...FacetDetails\n        children {\n          ...FacetDetails\n          children {\n            ...FacetDetails\n            children {\n              ...FacetDetails\n              children {\n                ...FacetDetails\n                children {\n                  ...FacetDetails\n                  __typename\n                }\n                __typename\n              }\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    products {\n      ...ProductDetails\n      crossSells {\n        sku\n        __typename\n      }\n      retailSetProducts {\n        ...ProductDetails\n        __typename\n      }\n      __typename\n    }\n    textMessage {\n      header\n      linkText\n      longBody\n      messageType\n      shortBody\n      targetUrl\n      __typename\n    }\n    socialLists {\n      author\n      authorVerified\n      followers\n      id\n      labels\n      productImages\n      thumbnail\n      title\n      __typename\n    }\n    selectedFacets {\n      values {\n        name\n        count\n        friendlyUrl\n        __typename\n      }\n      __typename\n    }\n    breadcrumbs {\n      text\n      friendlyUrl\n      __typename\n    }\n    seo {\n      title\n      description\n      canonicalLink\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment ProductDetails on Product {\n  id: sku\n  brand\n  category: rootCategory\n  subtitle: packSizeDisplay\n  title\n  image\n  inAssortment\n  availability {\n    availability\n    isAvailable\n    label\n    __typename\n  }\n  sponsored\n  link\n  retailSet\n  prices: price {\n    price\n    promoPrice\n    pricePerUnit {\n      price\n      unit\n      __typename\n    }\n    __typename\n  }\n  quantityDetails {\n    maxAmount\n    minAmount\n    stepAmount\n    defaultAmount\n    __typename\n  }\n  primaryBadge: primaryBadges {\n    alt\n    image\n    __typename\n  }\n  secondaryBadges {\n    alt\n    image\n    __typename\n  }\n  badgeDescription\n  promotions {\n    id\n    group\n    isKiesAndMix\n    image\n    tags {\n      text\n      inverse\n      __typename\n    }\n    start {\n      dayShort\n      date\n      monthShort\n      __typename\n    }\n    end {\n      dayShort\n      date\n      monthShort\n      __typename\n    }\n    attachments {\n      type\n      path\n      __typename\n    }\n    __typename\n  }\n  __typename\n}\n\nfragment FacetDetails on Facet {\n  id\n  count\n  name\n  parent\n  friendlyUrl\n  selected\n  __typename\n}\n"
 HEADERS = {
@@ -46,6 +46,7 @@ class JumboSpider(Spider):
                 yield Request(
                     url=response.urljoin(product["link"]),
                     callback=self.parse_product,
+                    priority=1000,
                 )
             max_index = data["start"] + len(data["products"])
             if data["count"] > max_index:
@@ -63,17 +64,15 @@ class JumboSpider(Spider):
         table = response.xpath(
             "//table[@data-testid='nutritional-values-table-content']"
         )
-        nutrition = {
-            row.xpath("./td[1]/text()")
-            .extract_first(): row.xpath("./td[2]/text()")
-            .extract_first()
-            for row in table.xpath(".//tr")
-        }
         return Product(
             name=response.xpath(
                 "//strong[@data-testid='product-title']/text()"
             ).extract_first(),
-            nutrition=nutrition,
+            nutrition=_parse_nutrition(
+                response.xpath(
+                    "//table[@data-testid='nutritional-values-table-content']"
+                )
+            ),
         )
 
     def search_request(self, category: Optional[str] = "", offset: int = 0) -> Request:
@@ -105,3 +104,22 @@ class JumboSpider(Spider):
             headers={"Content-Type": "application/json", "Accept-Encoding": "gzip"},
             priority=offset,
         )
+
+
+def _parse_nutrition(selector) -> NutritionData:
+    paths = {
+        "reference": ".//tr/th[2]/text()",
+        "fat": ".//tr[contains(td/text(), 'etten')]/td[2]/text()",
+        "carbs": ".//tr[contains(td/text(), 'oolhydraten')]/td[2]/text()",
+        "energy": ".//tr[contains(td/text(), 'nergie')]/td[2]/text()",
+        "fiber": ".//tr[contains(td/text(), 'ezels')]/td[2]/text()",
+        "protein": ".//tr[contains(td/text(), 'iwitten')]/td[2]/text()",
+        "sugar": ".//tr[contains(td/text(), 'uiker')]/td[2]/text()",
+        "salt": ".//tr[contains(td/text(), 'out')]/td[2]/text()",
+    }
+    return NutritionData(
+        **{
+            key: Measure.from_string(selector.xpath(value).extract_first())
+            for key, value in paths.items()
+        }
+    )
