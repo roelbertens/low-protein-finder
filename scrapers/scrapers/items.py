@@ -28,7 +28,7 @@ class Measure:
             return Measure(float(v), u)
         except AttributeError:
             pass
-        logging.warning(f"Failed to convert |{value}| to a Measure.")
+        logging.debug(f"Failed to convert |{value}| to a Measure.")
         return None
 
 
