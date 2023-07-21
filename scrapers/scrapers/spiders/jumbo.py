@@ -57,17 +57,27 @@ class JumboSpider(Spider):
 
     def parse_product(self, response: Response):
         """
-
         @url https://www.jumbo.com/producten/jumbo-wit-tijgerbrood-300153STK
-        @returns item 1
+        @returns item 1 1
         """
-        table = response.xpath(
-            "//table[@data-testid='nutritional-values-table-content']"
+        product_data = loads(
+            response.xpath(
+                "//head/script[@type='application/ld+json']/text()"
+            ).extract_first()
+        )
+        breadcrumb_data = loads(
+            response.xpath(
+                "//div[@data-testid='jum-breadcrumb']//script[@type='application/ld+json']/text()"
+            ).extract_first()
         )
         return Product(
-            name=response.xpath(
-                "//strong[@data-testid='product-title']/text()"
-            ).extract_first(),
+            name=product_data["name"],
+            brand=product_data["brand"]["name"],
+            description=product_data["description"],
+            price=product_data["offers"]["highPrice"],
+            category=[
+                element["name"] for element in breadcrumb_data["itemListElement"][0]
+            ],
             nutrition=_parse_nutrition(
                 response.xpath(
                     "//table[@data-testid='nutritional-values-table-content']"

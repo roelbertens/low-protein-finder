@@ -39,4 +39,8 @@ class NutritionData:
 @dataclass
 class Product:
     name: str
+    brand: str | None
+    description: str | None
+    price: float | None
+    category: list[str] | None
     nutrition: NutritionData | None
