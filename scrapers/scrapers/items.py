@@ -2,7 +2,7 @@
 #
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/items.html
-
+import logging
 from dataclasses import dataclass
 from re import search, IGNORECASE
 
@@ -18,10 +18,18 @@ class Measure:
             return None
         try:
             v, u = search("(\d+(?:\.\d+)?)\s*([a-z]+)", value, IGNORECASE).groups()
+            return Measure(float(v), u)
         except AttributeError:
-            print(f"|{value}|")
-            return None
-        return Measure(v, u)
+            pass
+
+        # Special case where the unit is specified before the value.
+        try:
+            u, v = search("([a-z]+)\s*(\d+(?:\.\d+)?)$", value, IGNORECASE).groups()
+            return Measure(float(v), u)
+        except AttributeError:
+            pass
+        logging.warning(f"Failed to convert |{value}| to a Measure.")
+        return None
 
 
 @dataclass
