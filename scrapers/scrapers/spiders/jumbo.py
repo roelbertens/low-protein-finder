@@ -46,7 +46,6 @@ class JumboSpider(Spider):
                 yield Request(
                     url=response.urljoin(product["link"]),
                     callback=self.parse_product,
-                    priority=1000,
                 )
             max_index = data["start"] + len(data["products"])
             if data["count"] > max_index:
